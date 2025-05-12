@@ -10,6 +10,8 @@ import org.bouncycastle.jcajce.provider.digest.SHA3;
 import java.nio.file.*;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.HashMap;
 
 public class GameManager {
 
@@ -332,10 +334,20 @@ public class GameManager {
         // Draw a card from the draw pile
         Path drawFile = Paths.get(gameDirectory, "draw.txt");
         Path userCardFile = Paths.get(gameDirectory, username + ".txt");
+        Path discardFile = Paths.get(gameDirectory, "discard.txt");
 
         List<String> drawPile = Files.readAllLines(drawFile);
         if (drawPile.isEmpty()) {
-            throw new IllegalStateException("Draw pile is empty!");
+            // Draw pile is empty, determine winner by points
+            String winner = determineWinnerByPoints();
+            gameState.setGameOver();
+            gameState.save();
+            
+            // Show final point totals and declare winner
+            System.out.println("\nDraw pile is empty! Game ends with points:");
+            showAllPlayerPoints();
+            System.out.println("\nGame Over! " + winner + " wins with the least points!\n");
+            return;
         }
 
         // Add card to player's hand
@@ -351,12 +363,77 @@ public class GameManager {
         gameState.setLastDrawnBy(username);
         gameState.save();
 
+        // Show drawn card and current hand
         System.out.println("\nDrew card: " + drawnCard);
         System.out.println("Your cards:");
         for (int i = 0; i < playerCards.size(); i++) {
             System.out.println((i + 1) + ". " + playerCards.get(i));
         }
-        System.out.println();
+        
+        // Show top of discard pile
+        String topDiscard = Files.readAllLines(discardFile).get(0);
+        System.out.println("\nTop card on discard pile: " + topDiscard + "\n");
+    }
+
+    private String determineWinnerByPoints() throws IOException {
+        Map<String, Integer> playerPoints = new HashMap<>();
+        int minPoints = Integer.MAX_VALUE;
+        String winner = null;
+
+        // Get list of players (excluding admin)
+        Path usersFile = Paths.get(gameDirectory, "users.txt");
+        List<String> userLines = Files.readAllLines(usersFile);
+        List<String> players = userLines.stream()
+            .map(line -> line.split(",")[0])
+            .filter(username -> !username.equals(ADMIN_USERNAME))
+            .collect(Collectors.toList());
+
+        // Calculate points for each player
+        for (String player : players) {
+            int points = calculatePlayerPoints(player);
+            playerPoints.put(player, points);
+            
+            // Update winner if this player has fewer points
+            if (points < minPoints) {
+                minPoints = points;
+                winner = player;
+            }
+        }
+
+        return winner;
+    }
+
+    private int calculatePlayerPoints(String username) throws IOException {
+        Path userCardFile = Paths.get(gameDirectory, username + ".txt");
+        if (!Files.exists(userCardFile)) {
+            return 0; // Player has no cards
+        }
+
+        List<String> cardStrings = Files.readAllLines(userCardFile);
+        int totalPoints = 0;
+
+        for (String cardStr : cardStrings) {
+            Card card = Card.fromString(cardStr);
+            totalPoints += card.getPoints();
+        }
+
+        return totalPoints;
+    }
+
+    private void showAllPlayerPoints() throws IOException {
+        // Get list of players (excluding admin)
+        Path usersFile = Paths.get(gameDirectory, "users.txt");
+        List<String> userLines = Files.readAllLines(usersFile);
+        List<String> players = userLines.stream()
+            .map(line -> line.split(",")[0])
+            .filter(username -> !username.equals(ADMIN_USERNAME))
+            .collect(Collectors.toList());
+
+        // Show points for each player
+        for (String player : players) {
+            int points = calculatePlayerPoints(player);
+            System.out.println(player + ": " + points + " points");
+        }
     }
 
     public void passTurn(String username) throws IOException {
@@ -389,13 +466,19 @@ public class GameManager {
 
     private boolean canPlayCard(String playedCard, String topCard) {
         // Eight can be played on anything
-        if (playedCard.charAt(0) == '8') {
+        if (playedCard.startsWith("8")) {
             return true;
         }
 
+        // Extract ranks and suits
+        String playedRank = playedCard.substring(0, playedCard.length() - 1);
+        String topRank = topCard.substring(0, topCard.length() - 1);
+        char playedSuit = playedCard.charAt(playedCard.length() - 1);
+        char topSuit = topCard.charAt(topCard.length() - 1);
+
         // Match rank or suit
-        return playedCard.charAt(0) == topCard.charAt(0) || // Same rank
-               playedCard.charAt(1) == topCard.charAt(1);    // Same suit
+        return playedRank.equals(topRank) || // Same rank
+               playedSuit == topSuit;        // Same suit
     }
 
     private void validateUserPassword(String username, String password) throws IOException {
