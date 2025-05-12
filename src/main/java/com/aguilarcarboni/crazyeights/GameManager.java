@@ -150,7 +150,6 @@ public class GameManager {
     }
 
     public void startGame() throws IOException {
-
         System.out.println("Starting game " + gameDirectory);
 
         // Validate game exists
@@ -165,14 +164,254 @@ public class GameManager {
             throw new IllegalStateException("Invalid admin password"); 
         }
 
+        // Get list of users (excluding admin)
+        Path usersFile = Paths.get(gameDirectory, "users.txt");
+        List<String> userLines = Files.readAllLines(usersFile);
+        List<String> usernames = userLines.stream().map(line -> line.split(",")[0]).filter(username -> !username.equals(ADMIN_USERNAME)).collect(Collectors.toList());
+
+        if (usernames.isEmpty()) { throw new IllegalStateException("No users found in the game!"); }
+        if (usernames.size() < 2) { throw new IllegalStateException("At least 2 users are required to start the game!"); }
+
         // Create a new deck and shuffle it
         Deck deck = new Deck();
         deck.shuffle();
 
-        // Create draw.txt with all cards
+        // Deal 5 cards to each user
+        for (String username : usernames) {
+
+            // Deal 5 cards to the user
+            List<Card> userCards = deck.dealCards(5);
+            Path userCardFile = Paths.get(gameDirectory, username + ".txt");
+            List<String> cardStrings = userCards.stream().map(Card::toString).collect(Collectors.toList());
+
+            // Write the cards to the user's card file
+            Files.write(userCardFile, cardStrings);
+            System.out.println("Dealt 5 cards to user: " + username);
+        }
+
+        // Deal one card to discard pile
+        Card discardCard = deck.dealCard();
+        Path discardFile = Paths.get(gameDirectory, "discard.txt");
+        Files.write(discardFile, List.of(discardCard.toString()));
+        System.out.println("Created discard pile with card: " + discardCard);
+
+        // Put remaining cards in draw pile
         Path drawFile = Paths.get(gameDirectory, "draw.txt");
         Files.write(drawFile, deck.getCardStrings());
+        System.out.println("Created draw pile with " + deck.remainingCards() + " cards");
 
-        System.out.println("Game started successfully! All cards are in draw.txt\n");
+        // Initialize and save game state
+        GameState gameState = new GameState(gameDirectory, usernames);
+        gameState.save();
+
+        System.out.println("Game started successfully!\n");
     }
-} 
+
+    public void showPlayOrder(String username) throws IOException {
+        // Validate user's password
+        String password = getPasswordSecurely("Enter password for " + username + ": ");
+        validateUserPassword(username, password);
+
+        // Load game state and show order
+        GameState gameState = GameState.load(gameDirectory);
+        if (gameState.isGameOver()) {
+            throw new IllegalStateException("Game is over!");
+        }
+
+        List<String> order = gameState.getPlayOrder();
+        System.out.println("\nCurrent turn order (starting with current player):");
+        for (int i = 0; i < order.size(); i++) {
+            System.out.println((i + 1) + ". " + order.get(i) + (i == 0 ? " (current turn)" : ""));
+        }
+        System.out.println();
+    }
+
+    public void showCards(String viewerUsername, String targetUsername) throws IOException {
+        // Validate viewer's password
+        String password = getPasswordSecurely("Enter password for " + viewerUsername + ": ");
+        
+        // Check if viewer is admin or the same user
+        if (!viewerUsername.equals(ADMIN_USERNAME)) {
+            validateUserPassword(viewerUsername, password);
+            if (!viewerUsername.equals(targetUsername)) {
+                throw new IllegalStateException("You can only view your own cards!");
+            }
+        } else {
+            validateAdminPassword(password);
+        }
+
+        // Show target user's cards
+        Path userCardFile = Paths.get(gameDirectory, targetUsername + ".txt");
+        Path discardFile = Paths.get(gameDirectory, "discard.txt");
+
+        if (!Files.exists(userCardFile)) {
+            throw new IllegalStateException("User " + targetUsername + " has no cards!");
+        }
+
+        List<String> cards = Files.readAllLines(userCardFile);
+        String topDiscard = Files.readAllLines(discardFile).get(0);
+
+        System.out.println("\nCards for " + targetUsername + ":");
+        for (int i = 0; i < cards.size(); i++) {
+            System.out.println((i + 1) + ". " + cards.get(i));
+        }
+        System.out.println("\nTop card on discard pile: " + topDiscard + "\n");
+    }
+
+    public void playCard(String username, String card) throws IOException {
+        // Validate user's password
+        String password = getPasswordSecurely("Enter password for " + username + ": ");
+        validateUserPassword(username, password);
+
+        // Load game state
+        GameState gameState = GameState.load(gameDirectory);
+        if (gameState.isGameOver()) {
+            throw new IllegalStateException("Game is over!");
+        }
+
+        // Check if it's the player's turn
+        if (!gameState.isPlayerTurn(username)) {
+            throw new IllegalStateException("It's not your turn! Current player: " + gameState.getCurrentPlayer());
+        }
+
+        // Check if the card exists in the player's hand
+        Path userCardFile = Paths.get(gameDirectory, username + ".txt");
+        List<String> cards = Files.readAllLines(userCardFile);
+        if (!cards.contains(card)) {
+            throw new IllegalStateException("You don't have the card " + card + "!");
+        }
+
+        // Check if the card can be played
+        Path discardFile = Paths.get(gameDirectory, "discard.txt");
+        String topCard = Files.readAllLines(discardFile).get(0);
+        
+        // Check if card matches top card (same rank, same suit, or eight)
+        if (!canPlayCard(card, topCard)) {
+            throw new IllegalStateException("Cannot play " + card + " on " + topCard + "!");
+        }
+
+        // Remove card from player's hand and add to discard pile
+        cards.remove(card);
+        Files.write(userCardFile, cards);
+        Files.write(discardFile, List.of(card));
+
+        // Check if player has won
+        if (cards.isEmpty()) {
+            gameState.setGameOver();
+            System.out.println("\nGame Over! " + username + " wins!\n");
+        } else {
+            // Move to next player
+            gameState.nextTurn();
+            System.out.println("\nPlayed " + card + ". Next player: " + gameState.getCurrentPlayer() + "\n");
+        }
+
+        gameState.save();
+    }
+
+    public void drawCard(String username) throws IOException {
+        // Validate user's password
+        String password = getPasswordSecurely("Enter password for " + username + ": ");
+        validateUserPassword(username, password);
+
+        // Load game state
+        GameState gameState = GameState.load(gameDirectory);
+        if (gameState.isGameOver()) {
+            throw new IllegalStateException("Game is over!");
+        }
+
+        // Check if it's the player's turn
+        if (!gameState.isPlayerTurn(username)) {
+            throw new IllegalStateException("It's not your turn! Current player: " + gameState.getCurrentPlayer());
+        }
+
+        // Check if player has already drawn this turn
+        if (gameState.hasDrawnThisTurn(username)) {
+            throw new IllegalStateException("You have already drawn a card this turn!");
+        }
+
+        // Draw a card from the draw pile
+        Path drawFile = Paths.get(gameDirectory, "draw.txt");
+        Path userCardFile = Paths.get(gameDirectory, username + ".txt");
+
+        List<String> drawPile = Files.readAllLines(drawFile);
+        if (drawPile.isEmpty()) {
+            throw new IllegalStateException("Draw pile is empty!");
+        }
+
+        // Add card to player's hand
+        String drawnCard = drawPile.remove(0);
+        List<String> playerCards = Files.readAllLines(userCardFile);
+        playerCards.add(drawnCard);
+
+        // Update files
+        Files.write(drawFile, drawPile);
+        Files.write(userCardFile, playerCards);
+
+        // Update game state
+        gameState.setLastDrawnBy(username);
+        gameState.save();
+
+        System.out.println("\nDrew card: " + drawnCard);
+        System.out.println("Your cards:");
+        for (int i = 0; i < playerCards.size(); i++) {
+            System.out.println((i + 1) + ". " + playerCards.get(i));
+        }
+        System.out.println();
+    }
+
+    public void passTurn(String username) throws IOException {
+        // Validate user's password
+        String password = getPasswordSecurely("Enter password for " + username + ": ");
+        validateUserPassword(username, password);
+
+        // Load game state
+        GameState gameState = GameState.load(gameDirectory);
+        if (gameState.isGameOver()) {
+            throw new IllegalStateException("Game is over!");
+        }
+
+        // Check if it's the player's turn
+        if (!gameState.isPlayerTurn(username)) {
+            throw new IllegalStateException("It's not your turn! Current player: " + gameState.getCurrentPlayer());
+        }
+
+        // Check if player has drawn this turn
+        if (!gameState.hasDrawnThisTurn(username)) {
+            throw new IllegalStateException("You must draw a card before passing!");
+        }
+
+        // Move to next player
+        gameState.nextTurn();
+        gameState.save();
+
+        System.out.println("\nTurn passed. Next player: " + gameState.getCurrentPlayer() + "\n");
+    }
+
+    private boolean canPlayCard(String playedCard, String topCard) {
+        // Eight can be played on anything
+        if (playedCard.charAt(0) == '8') {
+            return true;
+        }
+
+        // Match rank or suit
+        return playedCard.charAt(0) == topCard.charAt(0) || // Same rank
+               playedCard.charAt(1) == topCard.charAt(1);    // Same suit
+    }
+
+    private void validateUserPassword(String username, String password) throws IOException {
+        Path usersFile = Paths.get(gameDirectory, "users.txt");
+        List<String> lines = Files.readAllLines(usersFile);
+        
+        String userLine = lines.stream()
+            .filter(line -> line.startsWith(username + ","))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("User not found"));
+
+        String storedHash = userLine.split(",")[1];
+        String inputHash = hashPassword(password);
+        
+        if (!storedHash.equals(inputHash)) {
+            throw new IllegalStateException("Invalid password");
+        }
+    }
+}

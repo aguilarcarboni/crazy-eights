@@ -37,4 +37,30 @@ public class Deck {
         }
         return cardStrings;
     }
+
+    // Deal a specific number of cards
+    public List<Card> dealCards(int numCards) {
+        if (numCards > cards.size()) {
+            throw new IllegalStateException("Not enough cards in deck to deal " + numCards + " cards");
+        }
+
+        List<Card> dealtCards = new ArrayList<>();
+        for (int i = 0; i < numCards; i++) {
+            dealtCards.add(cards.remove(0));
+        }
+        return dealtCards;
+    }
+
+    // Deal a single card
+    public Card dealCard() {
+        if (cards.isEmpty()) {
+            throw new IllegalStateException("No cards left in deck");
+        }
+        return cards.remove(0);
+    }
+
+    // Get remaining cards count
+    public int remainingCards() {
+        return cards.size();
+    }
 } 

@@ -2,12 +2,9 @@
 
 ## Operating Systems
 ### Description 
-A Java-based CLI game that simulates the card game Crazy Eights.
+A Java-based CLI game that simulates the card game Crazy Eights. This project is intended to outline concepts of file systems and their APIs, and their role in Operating Systems.
 
-Key features:
-
-### Project Structure
-
-### Learning Objectives
+### Results 
+Scored a 100% in the project.
 
 ### created by [@aguilarcarboni](https://github.com/aguilarcarboni/)
