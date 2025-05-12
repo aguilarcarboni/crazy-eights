@@ -15,22 +15,3 @@ java -cp target/crazy-eights-1.0-SNAPSHOT-jar-with-dependencies.jar com.aguilarc
 
 # Start the game
 java -cp target/crazy-eights-1.0-SNAPSHOT-jar-with-dependencies.jar com.aguilarcarboni.crazyeights.App --start --game initial_setup
-
-# Marco checks his cards
-java -cp target/crazy-eights-1.0-SNAPSHOT-jar-with-dependencies.jar com.aguilarcarboni.crazyeights.App --cards Marco --user Marco --game initial_setup
-
-# Marco plays a 4H
-java -cp target/crazy-eights-1.0-SNAPSHOT-jar-with-dependencies.jar com.aguilarcarboni.crazyeights.App --play 4H --user Marco --game initial_setup
-
-# Check the turn order
-java -cp target/crazy-eights-1.0-SNAPSHOT-jar-with-dependencies.jar com.aguilarcarboni.crazyeights.App --order --user Esteban --game initial_setup
-
-# Esteban checks his cards
-java -cp target/crazy-eights-1.0-SNAPSHOT-jar-with-dependencies.jar com.aguilarcarboni.crazyeights.App --cards Esteban --user Esteban --game initial_setup
-
-# Esteban plays a 9D
-java -cp target/crazy-eights-1.0-SNAPSHOT-jar-with-dependencies.jar com.aguilarcarboni.crazyeights.App --play 9D --user Esteban --game initial_setup
-
-# Check the turn order
-java -cp target/crazy-eights-1.0-SNAPSHOT-jar-with-dependencies.jar com.aguilarcarboni.crazyeights.App --order --user Juan --game initial_setup
-
